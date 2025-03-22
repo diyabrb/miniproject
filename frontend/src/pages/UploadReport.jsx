@@ -2,19 +2,21 @@ import { useState, useEffect } from "react";
 import { FaCloudUploadAlt } from "react-icons/fa";
 import { Bar } from "react-chartjs-2";
 import "chart.js/auto";
-import { supabase } from "../supabaseClient"; // Ensure correct import
+import Tesseract from "tesseract.js";
+import { supabase } from "../supabaseClient";
 
 export default function ReportUpload() {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [extractingText, setExtractingText] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (file) {
       const objectUrl = URL.createObjectURL(file);
       setPreview(objectUrl);
-
-      return () => URL.revokeObjectURL(objectUrl); // Cleanup to avoid memory leaks
+      return () => URL.revokeObjectURL(objectUrl);
     }
   }, [file]);
 
@@ -42,24 +44,92 @@ export default function ReportUpload() {
     }
 
     setUploading(true);
+    setMessage("");
+
     const fileExt = file.name.split(".").pop();
     const filePath = `reports/${Date.now()}.${fileExt}`;
 
     const { data, error } = await supabase.storage.from("reports").upload(filePath, file);
 
-    setUploading(false);
-
     if (error) {
       console.error("Upload error:", error.message);
-      alert("Upload failed. Try again.");
+      setMessage("Upload failed. Try again.");
+      setUploading(false);
       return;
     }
 
-    // Get the public URL of the uploaded file
     const { data: fileData } = supabase.storage.from("reports").getPublicUrl(filePath);
-    console.log("Uploaded file URL:", fileData.publicUrl);
+    const imageUrl = fileData.publicUrl;
+    console.log("Uploaded file URL:", imageUrl);
 
-    alert("File uploaded successfully!");
+    // ✅ Generate a UUID
+    const userId = crypto.randomUUID();
+    console.log("Generated User ID:", userId);
+
+    // ✅ Check if user exists in UserTable
+    const { data: existingUser, error: userCheckError } = await supabase
+      .from("UserTable")
+      .select("user_id")
+      .eq("user_id", userId)
+      .single();
+
+    if (userCheckError) {
+      console.log("User does not exist, inserting new user...");
+
+      // ✅ Insert user into UserTable first
+      const { error: userInsertError } = await supabase
+        .from("UserTable")
+        .insert([{ user_id: userId }]);
+
+      if (userInsertError) {
+        console.error("User insert error:", userInsertError.message);
+        setMessage(`User creation failed: ${userInsertError.message}`);
+        setUploading(false);
+        return;
+      }
+
+      console.log("User inserted successfully!");
+    }
+
+    // ✅ Perform OCR
+    setExtractingText(true);
+    setMessage("Extracting text from image...");
+
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
+
+      const blob = await response.blob();
+      const { data: ocrResult } = await Tesseract.recognize(blob, "eng");
+      const extractedText = ocrResult?.text?.trim() || "";
+
+      console.log("Extracted Text:", extractedText);
+
+      if (!extractedText) {
+        setMessage("No readable text found in the image.");
+        setExtractingText(false);
+        setUploading(false);
+        return;
+      }
+
+      // ✅ Insert into reports table
+      const { error: insertError } = await supabase
+        .from("reports")
+        .insert([{ user_id: userId, extracted_text: extractedText }]);
+
+      if (insertError) {
+        console.error("Insert error:", insertError.message);
+        setMessage(`Insert failed: ${insertError.message}`);
+      } else {
+        setMessage("File uploaded & text extracted successfully!");
+      }
+    } catch (ocrError) {
+      console.error("OCR error:", ocrError);
+      setMessage("OCR failed. Try another image.");
+    }
+
+    setExtractingText(false);
+    setUploading(false);
   };
 
   return (
@@ -101,22 +171,18 @@ export default function ReportUpload() {
             </div>
           )}
 
-          {/* Additional Notes */}
-          <textarea
-            className="w-full border rounded-md p-3 mt-4 text-sm"
-            placeholder="Add any additional information about allergies..."
-          ></textarea>
-
           {/* Upload Button */}
           <button
             onClick={handleUpload}
-            disabled={uploading}
+            disabled={uploading || extractingText}
             className={`mt-4 w-full py-2 rounded-md transition ${
-              uploading ? "bg-gray-400 cursor-not-allowed" : "bg-green-500 text-white hover:bg-green-600"
+              uploading || extractingText ? "bg-gray-400 cursor-not-allowed" : "bg-green-500 text-white hover:bg-green-600"
             }`}
           >
-            {uploading ? "Uploading..." : "Upload Report"}
+            {uploading ? "Uploading..." : extractingText ? "Extracting Text..." : "Upload Report"}
           </button>
+
+          {message && <p className="mt-4 text-sm text-center text-gray-700">{message}</p>}
         </div>
 
         {/* Analysis Section */}
@@ -134,17 +200,6 @@ export default function ReportUpload() {
               }}
               options={{ responsive: true, plugins: { legend: { position: "top" } } }}
             />
-          </div>
-
-          {/* All Reports Section */}
-          <div className="mt-6 bg-white shadow-md p-6 rounded-lg text-center">
-            <h2 className="text-lg font-semibold">All Reports</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              View all your nutrition reports in one place.
-            </p>
-            <button className="mt-3 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition">
-              View All Reports
-            </button>
           </div>
         </div>
       </div>
