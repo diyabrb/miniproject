@@ -46,13 +46,22 @@ export default function ReportUpload() {
     setUploading(true);
     setMessage("");
 
+    // ✅ Fetch the logged-in user's ID
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData?.user?.id) {
+      setMessage("Authentication error. Please log in again.");
+      setUploading(false);
+      return;
+    }
+    const userId = authData.user.id;
+    console.log("Authenticated user ID:", userId);
+
     const fileExt = file.name.split(".").pop();
-    const filePath = `reports/${Date.now()}.${fileExt}`;
+    const filePath = `reports/${userId}_${Date.now()}.${fileExt}`;
 
-    const { data, error } = await supabase.storage.from("reports").upload(filePath, file);
-
-    if (error) {
-      console.error("Upload error:", error.message);
+    const { error: uploadError } = await supabase.storage.from("reports").upload(filePath, file);
+    if (uploadError) {
+      console.error("Upload error:", uploadError.message);
       setMessage("Upload failed. Try again.");
       setUploading(false);
       return;
@@ -62,24 +71,17 @@ export default function ReportUpload() {
     const imageUrl = fileData.publicUrl;
     console.log("Uploaded file URL:", imageUrl);
 
-    // ✅ Generate a UUID
-    const userId = crypto.randomUUID();
-    console.log("Generated User ID:", userId);
-
-    // ✅ Check if user exists in UserTable
+    // ✅ Ensure the user exists in UserTable before inserting into reports
     const { data: existingUser, error: userCheckError } = await supabase
       .from("UserTable")
-      .select("user_id")
-      .eq("user_id", userId)
+      .select("auth_uid")
+      .eq("auth_uid", userId)
       .single();
 
-    if (userCheckError) {
+    if (userCheckError || !existingUser) {
       console.log("User does not exist, inserting new user...");
 
-      // ✅ Insert user into UserTable first
-      const { error: userInsertError } = await supabase
-        .from("UserTable")
-        .insert([{ user_id: userId }]);
+      const { error: userInsertError } = await supabase.from("UserTable").insert([{ auth_uid: userId }]);
 
       if (userInsertError) {
         console.error("User insert error:", userInsertError.message);
@@ -112,10 +114,11 @@ export default function ReportUpload() {
         return;
       }
 
-      // ✅ Insert into reports table
+      // ✅ Insert extracted text into ReportTable
+      console.log("Inserting into reports table...");
       const { error: insertError } = await supabase
         .from("reports")
-        .insert([{ user_id: userId, extracted_text: extractedText }]);
+        .insert([{ auth_uid: userId, extracted_text: extractedText }]);
 
       if (insertError) {
         console.error("Insert error:", insertError.message);
@@ -137,9 +140,7 @@ export default function ReportUpload() {
       <h1 className="text-3xl font-bold text-gray-900">
         Nutrition <span className="font-light">Report Upload</span>
       </h1>
-      <p className="text-gray-600 mt-2">
-        Upload your nutrition report images to generate insightful analytics.
-      </p>
+      <p className="text-gray-600 mt-2">Upload your nutrition report images to generate insightful analytics.</p>
 
       <div className="grid md:grid-cols-2 gap-8 mt-6">
         {/* Upload Section */}
@@ -147,31 +148,19 @@ export default function ReportUpload() {
           <h2 className="text-xl font-semibold mb-4">Upload New Report</h2>
           <p className="text-sm text-gray-500 mb-4">Supported formats: PNG, JPEG (Max: 10MB)</p>
 
-          {/* Upload Box */}
           <label className="border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center p-10 cursor-pointer hover:border-green-500 transition">
-            <input
-              type="file"
-              className="hidden"
-              accept="image/png, image/jpeg"
-              onChange={handleFileChange}
-            />
+            <input type="file" className="hidden" accept="image/png, image/jpeg" onChange={handleFileChange} />
             <FaCloudUploadAlt className="text-4xl text-green-500 mb-2" />
             <p className="text-gray-600">Click to upload or drag and drop</p>
           </label>
 
-          {/* File Preview */}
           {preview && (
             <div className="mt-4">
               <p className="text-sm font-medium">Selected File:</p>
-              <img
-                src={preview}
-                alt="Preview"
-                className="mt-2 rounded-lg shadow-md w-full max-h-40 object-cover"
-              />
+              <img src={preview} alt="Preview" className="mt-2 rounded-lg shadow-md w-full max-h-40 object-cover" />
             </div>
           )}
 
-          {/* Upload Button */}
           <button
             onClick={handleUpload}
             disabled={uploading || extractingText}
@@ -192,11 +181,7 @@ export default function ReportUpload() {
             <Bar
               data={{
                 labels: ["Report1", "Report2", "Report3"],
-                datasets: [
-                  { label: "Label 1", data: [30, 40, 25], backgroundColor: "#4CAF50" },
-                  { label: "Label 2", data: [35, 45, 20], backgroundColor: "#FFEB3B" },
-                  { label: "Label 3", data: [25, 35, 15], backgroundColor: "#8BC34A" },
-                ],
+                datasets: [{ label: "Example Data", data: [30, 40, 25], backgroundColor: "#4CAF50" }],
               }}
               options={{ responsive: true, plugins: { legend: { position: "top" } } }}
             />
