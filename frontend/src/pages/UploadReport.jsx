@@ -11,6 +11,7 @@ export default function ReportUpload() {
   const [uploading, setUploading] = useState(false);
   const [extractingText, setExtractingText] = useState(false);
   const [message, setMessage] = useState("");
+  const [notes, setNotes] = useState(""); // ✅ Additional Notes
 
   useEffect(() => {
     if (file) {
@@ -46,7 +47,7 @@ export default function ReportUpload() {
     setUploading(true);
     setMessage("");
 
-    // ✅ Fetch the logged-in user's ID
+    // ✅ Get Logged-in User ID
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (authError || !authData?.user?.id) {
       setMessage("Authentication error. Please log in again.");
@@ -54,24 +55,24 @@ export default function ReportUpload() {
       return;
     }
     const userId = authData.user.id;
-    console.log("Authenticated user ID:", userId);
 
+    // ✅ Construct File Path Correctly
     const fileExt = file.name.split(".").pop();
     const filePath = `reports/${userId}_${Date.now()}.${fileExt}`;
 
+    // ✅ Upload File to Supabase Storage
     const { error: uploadError } = await supabase.storage.from("reports").upload(filePath, file);
     if (uploadError) {
-      console.error("Upload error:", uploadError.message);
       setMessage("Upload failed. Try again.");
       setUploading(false);
       return;
     }
 
+    // ✅ Get File URL from Supabase Storage
     const { data: fileData } = supabase.storage.from("reports").getPublicUrl(filePath);
     const imageUrl = fileData.publicUrl;
-    console.log("Uploaded file URL:", imageUrl);
 
-    // ✅ Ensure the user exists in UserTable before inserting into reports
+    // ✅ Check if User Exists in "UserTable"
     const { data: existingUser, error: userCheckError } = await supabase
       .from("UserTable")
       .select("auth_uid")
@@ -79,18 +80,7 @@ export default function ReportUpload() {
       .single();
 
     if (userCheckError || !existingUser) {
-      console.log("User does not exist, inserting new user...");
-
-      const { error: userInsertError } = await supabase.from("UserTable").insert([{ auth_uid: userId }]);
-
-      if (userInsertError) {
-        console.error("User insert error:", userInsertError.message);
-        setMessage(`User creation failed: ${userInsertError.message}`);
-        setUploading(false);
-        return;
-      }
-
-      console.log("User inserted successfully!");
+      await supabase.from("UserTable").insert([{ auth_uid: userId }]);
     }
 
     // ✅ Perform OCR
@@ -105,8 +95,6 @@ export default function ReportUpload() {
       const { data: ocrResult } = await Tesseract.recognize(blob, "eng");
       const extractedText = ocrResult?.text?.trim() || "";
 
-      console.log("Extracted Text:", extractedText);
-
       if (!extractedText) {
         setMessage("No readable text found in the image.");
         setExtractingText(false);
@@ -114,20 +102,21 @@ export default function ReportUpload() {
         return;
       }
 
-      // ✅ Insert extracted text into ReportTable
-      console.log("Inserting into reports table...");
-      const { error: insertError } = await supabase
-        .from("reports")
-        .insert([{ auth_uid: userId, extracted_text: extractedText }]);
+      // ✅ Insert Data into "reports" Table
+      const { error: insertError } = await supabase.from("reports").insert([
+        {
+          auth_uid: userId,
+          extracted_text: extractedText,
+          notes: notes || "", // ✅ Avoids null values
+        },
+      ]);
 
       if (insertError) {
-        console.error("Insert error:", insertError.message);
         setMessage(`Insert failed: ${insertError.message}`);
       } else {
         setMessage("File uploaded & text extracted successfully!");
       }
     } catch (ocrError) {
-      console.error("OCR error:", ocrError);
       setMessage("OCR failed. Try another image.");
     }
 
@@ -161,6 +150,14 @@ export default function ReportUpload() {
             </div>
           )}
 
+          {/* ✅ Additional Notes Input */}
+          <textarea
+            className="w-full mt-4 p-2 border rounded-md"
+            placeholder="Add any additional information about allergies..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+
           <button
             onClick={handleUpload}
             disabled={uploading || extractingText}
@@ -174,16 +171,36 @@ export default function ReportUpload() {
           {message && <p className="mt-4 text-sm text-center text-gray-700">{message}</p>}
         </div>
 
-        {/* Analysis Section */}
+        {/* ✅ Updated Progress Tracking Chart */}
         <div>
           <div className="bg-white shadow-md p-6 rounded-lg">
             <h2 className="text-xl font-semibold mb-4">Progress Tracking</h2>
             <Bar
               data={{
-                labels: ["Report1", "Report2", "Report3"],
-                datasets: [{ label: "Example Data", data: [30, 40, 25], backgroundColor: "#4CAF50" }],
+                labels: ["Report 1", "Report 2", "Report 3"],
+                datasets: [
+                  {
+                    label: "Protein",
+                    data: [30, 50, 25],
+                    backgroundColor: "rgba(75, 192, 192, 0.6)", // Blue
+                  },
+                  {
+                    label: "Carbs",
+                    data: [70, 85, 80],
+                    backgroundColor: "rgba(255, 206, 86, 0.6)", // Yellow
+                  },
+                  {
+                    label: "Fats",
+                    data: [20, 30, 25],
+                    backgroundColor: "rgba(255, 99, 132, 0.6)", // Red
+                  },
+                ],
               }}
-              options={{ responsive: true, plugins: { legend: { position: "top" } } }}
+              options={{
+                responsive: true,
+                plugins: { legend: { position: "top" } },
+                scales: { y: { beginAtZero: true, max: 100 } },
+              }}
             />
           </div>
         </div>
