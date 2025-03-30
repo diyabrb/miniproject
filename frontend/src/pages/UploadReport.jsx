@@ -73,14 +73,32 @@ export default function ReportUpload() {
     const imageUrl = fileData.publicUrl;
 
     // ✅ Check if User Exists in "UserTable"
-    const { data: existingUser, error: userCheckError } = await supabase
+    const { data: userData, error: fetchError } = await supabase
       .from("UserTable")
-      .select("auth_uid")
+      .select("notes")
       .eq("auth_uid", userId)
       .single();
 
-    if (userCheckError || !existingUser) {
-      await supabase.from("UserTable").insert([{ auth_uid: userId }]);
+    if (fetchError) {
+      setMessage("Failed to fetch user data.");
+      setUploading(false);
+      return;
+    }
+
+    // ✅ Append New Notes
+    const newNotes = notes.split(",").map((note) => note.trim());
+    const updatedNotes = userData?.notes ? [...userData.notes, ...newNotes] : newNotes;
+
+    // ✅ Update "UserTable" with new notes
+    const { error: updateError } = await supabase
+      .from("UserTable")
+      .update({ notes: updatedNotes })
+      .eq("auth_uid", userId);
+
+    if (updateError) {
+      setMessage(`Failed to update notes: ${updateError.message}`);
+      setUploading(false);
+      return;
     }
 
     // ✅ Perform OCR
@@ -107,7 +125,6 @@ export default function ReportUpload() {
         {
           auth_uid: userId,
           extracted_text: extractedText,
-          notes: notes || "", // ✅ Avoids null values
         },
       ]);
 
@@ -169,40 +186,6 @@ export default function ReportUpload() {
           </button>
 
           {message && <p className="mt-4 text-sm text-center text-gray-700">{message}</p>}
-        </div>
-
-        {/* ✅ Updated Progress Tracking Chart */}
-        <div>
-          <div className="bg-white shadow-md p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Progress Tracking</h2>
-            <Bar
-              data={{
-                labels: ["Report 1", "Report 2", "Report 3"],
-                datasets: [
-                  {
-                    label: "Protein",
-                    data: [30, 50, 25],
-                    backgroundColor: "rgba(75, 192, 192, 0.6)", // Blue
-                  },
-                  {
-                    label: "Carbs",
-                    data: [70, 85, 80],
-                    backgroundColor: "rgba(255, 206, 86, 0.6)", // Yellow
-                  },
-                  {
-                    label: "Fats",
-                    data: [20, 30, 25],
-                    backgroundColor: "rgba(255, 99, 132, 0.6)", // Red
-                  },
-                ],
-              }}
-              options={{
-                responsive: true,
-                plugins: { legend: { position: "top" } },
-                scales: { y: { beginAtZero: true, max: 100 } },
-              }}
-            />
-          </div>
         </div>
       </div>
     </div>
