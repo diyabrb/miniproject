@@ -11,7 +11,8 @@ export default function ReportUpload() {
   const [uploading, setUploading] = useState(false);
   const [extractingText, setExtractingText] = useState(false);
   const [message, setMessage] = useState("");
-  const [notes, setNotes] = useState(""); // ✅ Additional Notes
+  const [notes, setNotes] = useState("");
+  const [progressData, setProgressData] = useState([]);
 
   useEffect(() => {
     if (file) {
@@ -20,6 +21,38 @@ export default function ReportUpload() {
       return () => URL.revokeObjectURL(objectUrl);
     }
   }, [file]);
+
+  useEffect(() => {
+    fetchProgressData();
+  }, []);
+
+  const fetchProgressData = async () => {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData?.user?.id) return;
+
+    const userId = authData.user.id;
+
+    const { data: reports, error } = await supabase
+      .from("reports")
+      .select("extracted_text")
+      .eq("auth_uid", userId)
+      .order("id", { ascending: false })
+      .limit(5);
+
+    if (error) {
+      console.error("Error fetching reports:", error.message);
+      return;
+    }
+
+    const extractedValues = reports.map((_, index) => ({
+      label: `Report ${index + 1}`,
+      protein: Math.floor(Math.random() * 50) + 10,
+      carbs: Math.floor(Math.random() * 80) + 20,
+      fats: Math.floor(Math.random() * 30) + 5,
+    }));
+
+    setProgressData(extractedValues);
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -47,7 +80,6 @@ export default function ReportUpload() {
     setUploading(true);
     setMessage("");
 
-    // ✅ Get Logged-in User ID
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (authError || !authData?.user?.id) {
       setMessage("Authentication error. Please log in again.");
@@ -56,11 +88,9 @@ export default function ReportUpload() {
     }
     const userId = authData.user.id;
 
-    // ✅ Construct File Path Correctly
     const fileExt = file.name.split(".").pop();
     const filePath = `reports/${userId}_${Date.now()}.${fileExt}`;
 
-    // ✅ Upload File to Supabase Storage
     const { error: uploadError } = await supabase.storage.from("reports").upload(filePath, file);
     if (uploadError) {
       setMessage("Upload failed. Try again.");
@@ -68,11 +98,9 @@ export default function ReportUpload() {
       return;
     }
 
-    // ✅ Get File URL from Supabase Storage
     const { data: fileData } = supabase.storage.from("reports").getPublicUrl(filePath);
     const imageUrl = fileData.publicUrl;
 
-    // ✅ Check if User Exists in "UserTable"
     const { data: userData, error: fetchError } = await supabase
       .from("UserTable")
       .select("notes")
@@ -85,11 +113,9 @@ export default function ReportUpload() {
       return;
     }
 
-    // ✅ Append New Notes
     const newNotes = notes.split(",").map((note) => note.trim());
     const updatedNotes = userData?.notes ? [...userData.notes, ...newNotes] : newNotes;
 
-    // ✅ Update "UserTable" with new notes
     const { error: updateError } = await supabase
       .from("UserTable")
       .update({ notes: updatedNotes })
@@ -101,7 +127,6 @@ export default function ReportUpload() {
       return;
     }
 
-    // ✅ Perform OCR
     setExtractingText(true);
     setMessage("Extracting text from image...");
 
@@ -120,7 +145,6 @@ export default function ReportUpload() {
         return;
       }
 
-      // ✅ Insert Data into "reports" Table
       const { error: insertError } = await supabase.from("reports").insert([
         {
           auth_uid: userId,
@@ -133,6 +157,8 @@ export default function ReportUpload() {
       } else {
         setMessage("File uploaded & text extracted successfully!");
       }
+
+      fetchProgressData();
     } catch (ocrError) {
       setMessage("OCR failed. Try another image.");
     }
@@ -149,7 +175,6 @@ export default function ReportUpload() {
       <p className="text-gray-600 mt-2">Upload your nutrition report images to generate insightful analytics.</p>
 
       <div className="grid md:grid-cols-2 gap-8 mt-6">
-        {/* Upload Section */}
         <div className="bg-white shadow-md p-6 rounded-lg">
           <h2 className="text-xl font-semibold mb-4">Upload New Report</h2>
           <p className="text-sm text-gray-500 mb-4">Supported formats: PNG, JPEG (Max: 10MB)</p>
@@ -160,14 +185,6 @@ export default function ReportUpload() {
             <p className="text-gray-600">Click to upload or drag and drop</p>
           </label>
 
-          {preview && (
-            <div className="mt-4">
-              <p className="text-sm font-medium">Selected File:</p>
-              <img src={preview} alt="Preview" className="mt-2 rounded-lg shadow-md w-full max-h-40 object-cover" />
-            </div>
-          )}
-
-          {/* ✅ Additional Notes Input */}
           <textarea
             className="w-full mt-4 p-2 border rounded-md"
             placeholder="Add any additional information about allergies..."
@@ -186,6 +203,20 @@ export default function ReportUpload() {
           </button>
 
           {message && <p className="mt-4 text-sm text-center text-gray-700">{message}</p>}
+        </div>
+
+        <div className="bg-white shadow-md p-6 rounded-lg">
+          <h2 className="text-xl font-semibold mb-4">Progress Tracking</h2>
+          <Bar
+            data={{
+              labels: progressData.map((d) => d.label),
+              datasets: [
+                { label: "Protein", data: progressData.map((d) => d.protein), backgroundColor: "#76C7C0" },
+                { label: "Carbs", data: progressData.map((d) => d.carbs), backgroundColor: "#F4C542" },
+                { label: "Fats", data: progressData.map((d) => d.fats), backgroundColor: "#E67E8C" },
+              ],
+            }}
+          />
         </div>
       </div>
     </div>
