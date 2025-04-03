@@ -11,6 +11,7 @@ export default function ReportUpload() {
   const [message, setMessage] = useState("");
   const [notes, setNotes] = useState("");
   const [progressData, setProgressData] = useState([]);
+  
 
   useEffect(() => {
     fetchProgressData();
@@ -22,7 +23,12 @@ export default function ReportUpload() {
     if (!authData?.user?.id) return;
     const userId = authData.user.id;
 
-    const { data: user } = await supabase.from("UserTable").select("notes").eq("auth_uid", userId).single();
+    const { data: user } = await supabase
+      .from("UserTable")
+      .select("notes")
+      .eq("auth_uid", userId)
+      .single();
+    
     if (user) setNotes(user.notes || "");
   };
 
@@ -31,9 +37,13 @@ export default function ReportUpload() {
     if (!authData?.user?.id) return;
     const userId = authData.user.id;
 
-    const updates = { notes: notes }; // Fix: Explicitly defining the update object
+    const updates = { notes: notes };
 
-    const { error } = await supabase.from("UserTable").update(updates).eq("auth_uid", userId);
+    const { error } = await supabase
+      .from("UserTable")
+      .update(updates)
+      .eq("auth_uid", userId);
+    
     alert(error ? "Failed to update allergies" : "Allergies updated successfully!");
   };
 
@@ -122,6 +132,7 @@ export default function ReportUpload() {
 
     setUploading(false);
   };
+  
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-10">
@@ -162,27 +173,50 @@ export default function ReportUpload() {
           <Bar
             data={{
               labels: progressData.map((d) => d.label),
-              datasets: Object.keys(progressData[0] || {})
-                .filter((k) => k !== "label")
-                .map((key) => ({
-                  label: key,
-                  data: progressData.map((d) => d[key]),
-                })),
-            }}
-          />
+              datasets: progressData.length
+                ? Object.keys(progressData[0] || {})
+                    .filter((k) => k !== "label" && progressData.some((d) => d[k] !== null))
+                    .flatMap((key) => {
+                      const standardRanges = {
+                        TSH: 2.5,
+                        cholesterol: 162.5,
+                        hemoglobin: 15.5,
+                        sugar: 105,
+                      };
 
-          <h3 className="text-lg font-semibold mt-6">Standard Ranges</h3>
-          <table className="w-full border-collapse border border-gray-300 mt-2">
-            <thead>
-              <tr className="bg-gray-100"><th className="border p-2">Metric</th><th className="border p-2">Standard Range</th></tr>
-            </thead>
-            <tbody>
-              <tr><td className="border p-2">TSH</td><td className="border p-2">0.5 - 5.0 mIU/L</td></tr>
-              <tr><td className="border p-2">Cholesterol</td><td className="border p-2">125 - 200 mg/dL</td></tr>
-              <tr><td className="border p-2">Hemoglobin</td><td className="border p-2">13.5 - 17.5 g/dL</td></tr>
-              <tr><td className="border p-2">Sugar</td><td className="border p-2">70 - 140 mg/dL</td></tr>
-            </tbody>
-          </table>
+                      return [
+                        { label: `${key} (Actual)`, data: progressData.map((d) => d[key]), backgroundColor: "rgba(54, 162, 235, 0.6)" },
+                        { label: `${key} (Standard)`, data: progressData.map((d) => (d[key] !== null ? standardRanges[key] : null)), backgroundColor: "rgba(255, 99, 132, 0.6)" },
+                      ];
+                    })
+                : [],
+            }}
+            
+          />
+          {/* Standard Values Table */}
+<h3 className="text-lg font-semibold mt-6">Standard Test Values</h3>
+<table className="w-full mt-4 border-collapse border border-gray-300">
+  <thead>
+    <tr className="bg-gray-100">
+      <th className="border border-gray-300 p-2">Test</th>
+      <th className="border border-gray-300 p-2">Standard Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    {[
+      { name: "TSH", standard: 2.5 },
+      { name: "Cholesterol", standard: 162.5 },
+      { name: "Hemoglobin", standard: 15.5 },
+      { name: "Sugar", standard: 105 },
+    ].map((test) => (
+      <tr key={test.name} className="border border-gray-300">
+        <td className="border border-gray-300 p-2">{test.name}</td>
+        <td className="border border-gray-300 p-2">{test.standard}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
         </div>
       </div>
     </div>
