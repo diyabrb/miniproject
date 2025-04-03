@@ -132,6 +132,9 @@ export default function ReportUpload() {
       <div className="grid md:grid-cols-2 gap-8 mt-6">
         <div className="bg-white shadow-md p-6 rounded-lg">
           <h2 className="text-xl font-semibold mb-4">Upload New Report</h2>
+          <p className="mt-2 text-sm text-red-600 text-center">
+  * Preferably upload Haemogram and Sugar reports *
+</p>
 
           <label className="border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center p-10 cursor-pointer hover:border-green-500 transition">
             <input type="file" className="hidden" accept="image/png, image/jpeg" onChange={(e) => setFile(e.target.files[0])} />
@@ -177,10 +180,10 @@ export default function ReportUpload() {
               <tr className="bg-gray-100"><th className="border p-2">Metric</th><th className="border p-2">Standard Range</th></tr>
             </thead>
             <tbody>
-              <tr><td className="border p-2">TSH</td><td className="border p-2">0.5 - 5.0 mIU/L</td></tr>
+              <tr><td className="border p-2">TSH</td><td className="border p-2">0.4 - 4.0 mIU/L</td></tr>
               <tr><td className="border p-2">Cholesterol</td><td className="border p-2">125 - 200 mg/dL</td></tr>
               <tr><td className="border p-2">Hemoglobin</td><td className="border p-2">13.5 - 17.5 g/dL</td></tr>
-              <tr><td className="border p-2">Sugar</td><td className="border p-2">70 - 140 mg/dL</td></tr>
+              <tr><td className="border p-2">Sugar</td><td className="border p-2">70 - 110 mg/dL</td></tr>
             </tbody>
           </table>
         </div>
